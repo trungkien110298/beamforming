@@ -1,0 +1,8 @@
+---- C++ ----
+Eigen 3.3.7
+libsndfile 1.0.28 
+portAudio v19
+
+---- Python ----
+webrtcvad==2.0.10
+PyAudio==0.2.11
