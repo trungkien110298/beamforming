@@ -199,24 +199,11 @@ double beamforming(const char file_name_in[], const char file_name_out[])
          << file_name_in << endl;
     SF_INFO sfinfo;
     SNDFILE *f_in = sf_open(file_name_in, SFM_READ, &sfinfo);
-    MatrixXd audio_raw = readfile(f_in, sfinfo);
+    MatrixXd audio = readfile(f_in, sfinfo);
     long long num_samples = sfinfo.frames;
     long long sample_rate = sfinfo.samplerate;
     int num_channels = sfinfo.channels;
     sf_close(f_in);
-
-    MatrixXd audio(num_samples, NUM_CHANNEL);
-    // int cc = 0;
-    // for (int i = 0; i < num_channels; i++)
-    //     if (i % 4 != 3)
-    //     {
-    //         audio.col(cc) = audio_raw.col(i);
-    //         cc++;
-    //     }
-    audio.col(0) = audio_raw.col(0);
-    audio.col(1) = audio_raw.col(1);
-    num_channels = NUM_CHANNEL;
-    cout << "Number channel in: " << NUM_CHANNEL << endl;
 
     //-------------------- Finish read file ----------------------//
 
@@ -284,10 +271,7 @@ double beamforming(const char file_name_in[], const char file_name_out[])
     auto stop_SE = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop_SE - start);
     double inferance_time = duration.count() / 1000000.0;
-    double audio_time = 1.0 * num_samples / sample_rate;
+    //double audio_time = 1.0 * num_samples / sample_rate;
 
-    // FILE *f = fopen("time_6c.csv", "a");
-    // fprintf(f, "%lf|%lf\n", audio_time, inferance_time);
-    // fclose(f);
     return inferance_time;
 }

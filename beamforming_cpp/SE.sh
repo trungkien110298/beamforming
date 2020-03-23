@@ -6,7 +6,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 FOLDER_IN=$1
-FOLDER_OUT=${FOLDER_IN}_6c_123567
+FOLDER_OUT=$2
 
 if [ ! -d $FOLDER_OUT ]; then
     mkdir $FOLDER_OUT
