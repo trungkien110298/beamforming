@@ -194,11 +194,12 @@ double beamforming(const char file_name_in[], const char file_name_out[])
     bool derev = true;
 
     //-------------------- Read file ----------------------//
-
+    
     cout << endl
          << file_name_in << endl;
     SF_INFO sfinfo;
     SNDFILE *f_in = sf_open(file_name_in, SFM_READ, &sfinfo);
+    cout<< sfinfo.channels << endl;
     MatrixXd audio = readfile(f_in, sfinfo);
     long long num_samples = sfinfo.frames;
     long long sample_rate = sfinfo.samplerate;
@@ -218,12 +219,13 @@ double beamforming(const char file_name_in[], const char file_name_out[])
     int argin = 1;
 
     MatrixXd sample(num_samples, 1);
-
+    MatrixXi VAD_result = VAD(audio, sample_rate, threshold, win_dur, hop_dur, num_noise, argin);
+    
     for (int i = 0; i < num_channels; i++)
     {
         sample.col(0) = audio.col(i);
 
-        MatrixXi result = VAD(sample, sample_rate, threshold, win_dur, hop_dur, num_noise, argin);
+        MatrixXi result = VAD_result.col(i);
         int left = 0;
 
         while (result(left, 0) != 1)
@@ -262,6 +264,7 @@ double beamforming(const char file_name_in[], const char file_name_out[])
     SF_INFO sfinfo_out = sfinfo;
     sfinfo_out.channels = mvdr_out.cols();
 
+    
     SNDFILE *f_out = sf_open(file_name_out, SFM_WRITE, &sfinfo_out);
     writefile(f_out, sfinfo_out, mvdr_out);
     sf_close(f_out);

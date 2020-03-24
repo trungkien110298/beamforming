@@ -11,4 +11,4 @@ int main(int argc, char *argv[]){
     // agrv[2] -- path output file
     double time = beamforming(argv[1], argv[2]);
     return 0;
-}
+}    
