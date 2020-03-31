@@ -3,71 +3,121 @@ import webrtcvad
 import numpy as np
 import wave
 from scipy.io import wavfile
+import subprocess
 
 
-# Config 
-CHUNK = 512
-FORMAT = pyaudio.paInt16
-CHANNELS = 8
-RATE = 16000
-RECORD_SECONDS = 3
-WAVE_OUTPUT_FILENAME = "output.wav"
+class Speech:
+    def __init__(self):
+        # Config
+        self.chunk = 512
+        self.format = pyaudio.paInt16
+        self.num_channels = 8
+        self.rate = 16000
+        self.record_seconds = 3
+
+    def record(self):
+        # Start stream
+        p = pyaudio.PyAudio()
+        stream = p.open(format=self.format,
+                        channels=self.num_channels,
+                        rate=self.rate,
+                        input=True,
+                        input_device_index=6,
+                        frames_per_buffer=self.chunk)
+
+        print("* recording")
+        self.frames = []
+        for i in range(0, int(self.rate / self.chunk * self.record_seconds)):
+            data = stream.read(self.chunk, exception_on_overflow=False)
+            self.frames.append(data)
+        print("* done recording")
+
+        framesAll = b''.join(self.frames)
+        self.audio = np.fromstring(framesAll, dtype=np.int16)
+        chunk_length = int(len(self.audio) / self.num_channels)
+        self.audio = np.reshape(self.audio, (chunk_length, self.num_channels))
+        self.num_samples = chunk_length
+
+        # Stop stream
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+
+    # Write audio to file
+    def write_to_file(self, file_name, type='raw'):
+
+        # wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
+        # wf.setnchannels(CHANNELS)
+        # wf.setsampwidth(p.get_sample_size(FORMAT))
+        # wf.setframeself.rate(self.rate)
+        # wf.writeframes(b''.join(frames))
+        # wf.close()
+
+        # Write to file
+        if type == 'raw':
+            wavfile.write(file_name, self.rate, self.audio)
+        elif type == 'enhanced':
+            wavfile.write(file_name, self.rate, self.audio_enhanced)
+
+    # Calculate VAD
+    def cal_VAD(self):
+        win_dur = 0.05
+        hop_dur = 0.025
+        vad_win_dur = 0.01
+
+        win_size = int(self.rate*win_dur)
+        hop_size = int(self.rate*hop_dur)
+        vad_win_size = int(self.rate*vad_win_dur)
+
+        vad = webrtcvad.Vad()
+        vad.set_mode(1)
+
+        sample_per_frame = int(self.rate*10/1000)
+        self.num_frames = int((self.num_samples - win_size) / hop_size)
+
+        self.vad = np.zeros(
+            (self.num_frames, self.num_channels), dtype='int16')
+        for channel in range(self.num_channels):
+            for i in range(self.num_frames):
+                frame = self.audio[i*hop_size: i*hop_size + win_size, channel]
+                res = 0
+                for f in range(5):
+                    begin = f * vad_win_size
+                    end = (f+1)*vad_win_size
+                    vad_frame = frame[begin:end].tobytes()
+                    res += int(vad.is_speech(vad_frame, self.rate))
+
+                self.vad[i, channel] = round(res/5)
+
+        for i in range(self.num_frames):
+            self.vad[i, :] = round(1.0*sum(self.vad[i, :])/self.num_channels)
+
+    # Call C++ module to enhance speech by beamforming
+    def beamforming(self):
+        audio_str = np.array2string(self.audio)
+        audio_str = audio_str.replace('[', '').replace(']', '')
+
+        vad_str = np.array2string(self.vad)
+        vad_str = vad_str.replace('[', '').replace(']', '')
+
+        process = subprocess.Popen(["bash", "beamforming", self.num_samples, self.num_channels,
+                                    self.rate, self.num_frames], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        process.stdin.write(audio_str, vad_str)
+
+        self.audio_enhanced = np.fromstring(process.communicate()[0])
+        self.audio_enhanced = self.audio_enhanced.reshape(
+            (self.num_samples, self.num_channels))
+        process.stdin.close()
 
 
-# Start stream
-p = pyaudio.PyAudio()
-stream = p.open(format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                input_device_index= 6,
-                frames_per_buffer=CHUNK)
-
-print("* recording")
-
-frames = []
-for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-    data = stream.read(CHUNK, exception_on_overflow=False)
-    frames.append(data)
-
-print(len(frames[0]), len(frames))
-print("* done recording")
+def main():
+    
+    s = Speech()
+    s.record()
+    s.cal_VAD()
+    s.beamforming()
+    s.write_to_file('record_enhanced.wav', type='enhanced')
 
 
-# Stop stream
-stream.stop_stream()
-stream.close()
-p.terminate()
-
-
-
-
-wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
-wf.setnchannels(CHANNELS)
-wf.setsampwidth(p.get_sample_size(FORMAT))
-wf.setframerate(RATE)
-wf.writeframes(b''.join(frames))
-wf.close()
-
-#Write to file
-framesAll = b''.join(frames)
-result = np.fromstring(framesAll, dtype=np.int16)
-chunk_length = len(result) / CHANNELS
-result = np.reshape(result, (chunk_length, CHANNELS))
-wavfile.write("wf" + WAVE_OUTPUT_FILENAME,RATE,result)
-
-# Test VAD 
-
-vad = webrtcvad.Vad()
-vad.set_mode(1)
-
-begin = 0
-sample_per_frame = int(RATE*10/1000)
-
-while True:
-    end = begin + sample_per_frame
-    if end > result.shape[0]:
-        break
-    test_frame = (result[begin:end,0]).tobytes()
-    print(vad.is_speech(test_frame, RATE))
-    begin = begin + sample_per_frame
+if __name__ == "__main__":
+    main()

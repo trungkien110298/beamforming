@@ -182,7 +182,7 @@ int main(void)
         goto done;
     printf("Wire on. Will run one minute.\n");
     fflush(stdout);
-    float sampleBlock [FRAMES_PER_BUFFER*NUM_CHANNELS];
+    float sampleBlock[FRAMES_PER_BUFFER * NUM_CHANNELS];
     /* -- Here's the loop where we pass data from input to output -- */
     for (int i = 0; i < (60 * SAMPLE_RATE) / FRAMES_PER_BUFFER; ++i)
     {

@@ -1,23 +1,39 @@
-import numpy as np
-import pandas
-df = pandas.read_csv('PhiNN.txt',header=None)
-a = df.to_numpy()
-# a =  np.char.replace(a,'i','j').astype(np.complex) 
+import pyaudio
+import wave
 
-b = []
-for i in range(a.shape[0]):
-    for j in range(a.shape[1]):
-        b.append(complex(a[i,j])) 
-c = np.asarray(b)
-c = np.reshape(c, (2,2))
+CHUNK = 1024
+FORMAT = pyaudio.paInt16
+CHANNELS = 8
+RATE = 16000
+RECORD_SECONDS = 5
+WAVE_OUTPUT_FILENAME = "output.wav"
 
-w, v = np.linalg.eig(c)
+p = pyaudio.PyAudio()
 
-for i in range(2):
-    print("\n")
-    print(v[:,i])
-    # # print(i+1)
-    # # print(w[i])
-    # # print("\n")
-    # # print(v[i])
-    # print(w[i]*v[i]-c.dot(v[i]))
+stream = p.open(format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                input_device_index=6,
+                frames_per_buffer=CHUNK)
+
+print("* recording")
+
+frames = []
+
+for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+    data = stream.read(CHUNK)
+    frames.append(data)
+
+print("* done recording")
+
+stream.stop_stream()
+stream.close()
+p.terminate()
+
+wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
+wf.setnchannels(CHANNELS)
+wf.setsampwidth(p.get_sample_size(FORMAT))
+wf.setframerate(RATE)
+wf.writeframes(b''.join(frames))
+wf.close()
