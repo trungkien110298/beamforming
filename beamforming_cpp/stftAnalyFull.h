@@ -116,7 +116,6 @@ tuple<Complex3DMatrix, Complex4DMatrix, Param> stftAnalyFull(MatrixXd &x, Param 
             MatrixXcd temp(num_channels, 1);
             for (int i = 0; i < num_channels; i++)
             {
-                // cout << (*X[i]).rows() << " " << (*X[i]).cols() << endl;
                 temp(i, 0) = (*X[i])(k, f);
             }
             // xff = temp * temp.transpose();

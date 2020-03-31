@@ -49,7 +49,7 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 
     auto stop_sAF = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop_sAF - start);
-    cout << "stftAnalyFull duration: " << duration.count() / 1000000.0 << endl;
+    // cout << "stftAnalyFull duration: " << duration.count() / 1000000.0 << endl;
 
     //-----------------------------------------------------//
 
@@ -72,7 +72,6 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 
     MatrixXcd DN(num_freq, num_channels);
     MatrixXcd DX(num_freq, num_channels);
-
     MatrixXcd VN_vec(num_freq, num_channels);
     MatrixXcd VX_vec(num_freq, num_channels);
 
@@ -143,7 +142,7 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 
     auto stop_cal_vec = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop_cal_vec - stop_sAF);
-    cout << "Calculate VN_vec, VX_vec duration: " << duration.count() / 1000000.0 << endl;
+    // cout << "Calculate VN_vec, VX_vec duration: " << duration.count() / 1000000.0 << endl;
 
     long long speech_noise_MVDR_size[3] = {2, num_frame, num_freq};
     Complex3DMatrix speech_noise_MVDR = init_Complex3DMatrix(speech_noise_MVDR_size);
@@ -155,7 +154,7 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 
     auto stop_MVDR = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop_MVDR - stop_cal_vec);
-    cout << "MVRDR duration: " << duration.count() / 1000000.0 << endl;
+    // cout << "MVRDR duration: " << duration.count() / 1000000.0 << endl;
 
     //-----------------------------------------------------//
 
@@ -168,7 +167,7 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 
     auto stop_scaling = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop_scaling - stop_MVDR);
-    cout << "Scaling duration: " << duration.count() / 1000000.0 << endl;
+    // cout << "Scaling duration: " << duration.count() / 1000000.0 << endl;
 
     //-----------------------------------------------------//
 
@@ -176,7 +175,7 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 
     auto stop_sS = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop_sS - stop_scaling);
-    cout << "stftSynth duration: " << duration.count() / 1000000.0 << endl;
+    // cout << "stftSynth duration: " << duration.count() / 1000000.0 << endl;
 
     //-----------------------------------------------------//
 
@@ -185,30 +184,15 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
     return make_tuple(mvdr_out, mvdr_derev_out);
 }
 
-double beamforming(const char file_name_in[], const char file_name_out[])
+MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
 {
-    // Input 8 channel audio data
+    // Config
     auto start = high_resolution_clock::now();
     int safe_region = 10;
     bool subnoisecov = true;
     bool derev = true;
-
-    //-------------------- Read file ----------------------//
-    
-    cout << endl
-         << file_name_in << endl;
-    SF_INFO sfinfo;
-    SNDFILE *f_in = sf_open(file_name_in, SFM_READ, &sfinfo);
-    cout<< sfinfo.channels << endl;
-    MatrixXd audio = readfile(f_in, sfinfo);
-    long long num_samples = sfinfo.frames;
-    long long sample_rate = sfinfo.samplerate;
-    int num_channels = sfinfo.channels;
-    sf_close(f_in);
-
-    //-------------------- Finish read file ----------------------//
-
-    //-------------------- VAD ----------------------//
+    long long num_samples = audio.rows();
+    int num_channels = audio.cols();
 
     double noise_begin = 100;
     double noise_end = 0;
@@ -218,24 +202,21 @@ double beamforming(const char file_name_in[], const char file_name_out[])
     int num_noise = 20;
     int argin = 1;
 
-    MatrixXd sample(num_samples, 1);
-    MatrixXi VAD_result = VAD(audio, sample_rate, threshold, win_dur, hop_dur, num_noise, argin);
-    
+    //-------------------- Finish VAD ----------------------//
+
     for (int i = 0; i < num_channels; i++)
     {
-        sample.col(0) = audio.col(i);
-
-        MatrixXi result = VAD_result.col(i);
+        MatrixXi vad_per_channel = vad.col(i);
         int left = 0;
 
-        while (result(left, 0) != 1)
+        while (vad_per_channel(left, 0) != 1)
         {
             left++;
         }
         double left_side = max((left - safe_region + 1) * 0.025, 0.0);
 
-        int right = result.rows() - 1;
-        while (result(right, 0) != 1)
+        int right = vad_per_channel.rows() - 1;
+        while (vad_per_channel(right, 0) != 1)
         {
             right--;
         }
@@ -247,7 +228,7 @@ double beamforming(const char file_name_in[], const char file_name_out[])
 
     auto stop_VAD = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop_VAD - start);
-    cout << "VAD duration: " << duration.count() / 1000000.0 << endl;
+
     noise_end = num_samples * (1.0 / sample_rate) - noise_end;
 
     //-------------------- Finish VAD ----------------------//
@@ -259,22 +240,10 @@ double beamforming(const char file_name_in[], const char file_name_out[])
 
     //-------------------- Finish speech enhancement ----------------------//
 
-    //-------------------- Write file ----------------------//
-
-    SF_INFO sfinfo_out = sfinfo;
-    sfinfo_out.channels = mvdr_out.cols();
-
-    
-    SNDFILE *f_out = sf_open(file_name_out, SFM_WRITE, &sfinfo_out);
-    writefile(f_out, sfinfo_out, mvdr_out);
-    sf_close(f_out);
-
-    //-------------------- Finish write file ----------------------//
-
     auto stop_SE = high_resolution_clock::now();
     duration = duration_cast<microseconds>(stop_SE - start);
     double inferance_time = duration.count() / 1000000.0;
     //double audio_time = 1.0 * num_samples / sample_rate;
 
-    return inferance_time;
+    return mvdr_out;
 }
