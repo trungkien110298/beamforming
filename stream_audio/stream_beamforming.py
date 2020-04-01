@@ -2,6 +2,7 @@ import pyaudio
 import webrtcvad
 import numpy as np
 import wave
+import sys
 from scipy.io import wavfile
 import subprocess
 
@@ -94,29 +95,37 @@ class Speech:
 
     # Call C++ module to enhance speech by beamforming
     def beamforming(self):
-        audio_str = np.array2string(self.audio)
+        # np.set_printoptions(threshold=sys.maxsize)
+        audio_str = np.array2string(self.audio, threshold=sys.maxsize)
         audio_str = audio_str.replace('[', '').replace(']', '')
 
         vad_str = np.array2string(self.vad)
         vad_str = vad_str.replace('[', '').replace(']', '')
 
-        process = subprocess.Popen(["bash", "beamforming", self.num_samples, self.num_channels,
-                                    self.rate, self.num_frames], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        process.stdin.write(audio_str, vad_str)
+        process = subprocess.Popen(
+            ["/home/kienpt/Documents/Beam/beamforming_cpp/beamforming"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        #process.stdin.write(audio_str + "\n"+ vad_str)
+        input_str = '\n'.join([str(self.num_samples), str(self.num_channels),
+                              str(self.rate), str(self.num_frames), audio_str, vad_str])
+        # with open('input.txt', 'w') as f:
+        #     f.write('{}'.format(input_str))
+        input_bytes = bytes(input_str, 'ascii')
+        output_bytes = process.communicate(input=input_bytes)[0]
+        output = output_bytes.decode("utf-8")
+        output_arr = output.split()
 
-        self.audio_enhanced = np.fromstring(process.communicate()[0])
-        self.audio_enhanced = self.audio_enhanced.reshape(
-            (self.num_samples, self.num_channels))
+        self.audio_enhanced = np.array(output_arr, dtype=float)
+        #self.audio_enhanced = self.audio_enhanced.reshape((self.num_samples, self.num_channels))
         process.stdin.close()
 
 
 def main():
-    
+
     s = Speech()
     s.record()
     s.cal_VAD()
     s.beamforming()
-    s.write_to_file('record_enhanced.wav', type='enhanced')
+    s.write_to_file('python_out.wav', type='enhanced')
 
 
 if __name__ == "__main__":

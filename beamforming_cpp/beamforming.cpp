@@ -1,46 +1,48 @@
 #include <iostream>
 #include <stdio.h>
-#include <eigen3/Eigen>
+#include <Eigen/Dense>
 #include "beamforming.h"
-
 
 using namespace std;
 using namespace Eigen;
 
-
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
     // Input
-    long long num_samples = argv[1];
-    long long num_channels = argv[2];
-    long long sample_rate = argv[3];
-    long long num_frames = argv[4];
-
+    long long num_samples;
+    long long num_channels;
+    long long sample_rate;
+    long long num_frames;
+    cin >> num_samples >> num_channels >> sample_rate >> num_frames;
     MatrixXd audio(num_samples, num_channels);
     MatrixXi vad(num_frames, num_channels);
 
-    for (int i = 0; i < num_channels; i++){
-        for (int j = 0; j < num_samples; j++){
-            cin >> audio(j, i);
+    for (int i = 0; i < num_samples; i++)
+    {
+        for (int j = 0; j < num_channels; j++)
+        {
+            cin >> audio(i, j);
         }
     }
-    for (int i = 0; i < num_channels; i++){
-        for (int j = 0; j < num_frames; j++){
-            cin >> vad(j, i);
+    for (int i = 0; i < num_frames; i++)
+    {
+        for (int j = 0; j < num_channels; j++)
+        {
+            cin >> vad(i, j);
         }
     }
 
-    
     MatrixXd audio_enhenced = beamforming(audio, vad, sample_rate);
 
     // Output
 
-    for (int i = 0; i < num_channels; i++){
-        for (int j = 0; j < num_samples; j++){
-            cout << audio_enhenced(j, i) << " ";
+    for (int i = 0; i < num_samples; i++)
+    {
+        if (isnan(audio_enhenced(i, 0))){
+            audio_enhenced(i, 0) = 0;
         }
-        cout << endl;
+        cout << audio_enhenced(i, 0) << " ";
     }
-    
-    
+
     return 0;
-}    
+}

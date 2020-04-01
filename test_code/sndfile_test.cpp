@@ -12,9 +12,9 @@ using namespace Eigen;
 
 MatrixXd readfile(SNDFILE *infile, SF_INFO &sfinfo)
 {
-    // char fname[] = "/home/kienpt/Documents/Beam/data/speaker0250-0020.wav";
-    // SF_INFO *sfinfo;
-    // SNDFILE *f = sf_open(fname, SFM_READ, sfinfo);
+    // // char fname[] = "/home/kienpt/Documents/Beam/data/speaker0250-0020.wav";
+    // // SF_INFO sfinfo;
+    // SNDFILE *f = sf_open(fname, SFM_READ, &sfinfo);
 
     int channels = sfinfo.channels;
     int num_samples = sfinfo.frames;

@@ -193,6 +193,7 @@ MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
     bool derev = true;
     long long num_samples = audio.rows();
     int num_channels = audio.cols();
+    long long num_frames = vad.rows();
 
     double noise_begin = 100;
     double noise_end = 0;
@@ -209,14 +210,14 @@ MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
         MatrixXi vad_per_channel = vad.col(i);
         int left = 0;
 
-        while (vad_per_channel(left, 0) != 1)
+        while (vad_per_channel(left) != 1 && left < num_frames - 1)
         {
             left++;
         }
         double left_side = max((left - safe_region + 1) * 0.025, 0.0);
 
         int right = vad_per_channel.rows() - 1;
-        while (vad_per_channel(right, 0) != 1)
+        while (vad_per_channel(right) != 1 && right > 0)
         {
             right--;
         }
@@ -244,6 +245,21 @@ MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
     duration = duration_cast<microseconds>(stop_SE - start);
     double inferance_time = duration.count() / 1000000.0;
     //double audio_time = 1.0 * num_samples / sample_rate;
+
+    char file_name_out[] = "/home/kienpt/Documents/Beam/stream_audio/ccp_out.wav";
+
+    //BUG: Test file
+    SF_INFO sfinfo_out;
+    sfinfo_out.channels = mvdr_out.cols();
+    sfinfo_out.frames = num_samples;
+    sfinfo_out.samplerate = sample_rate;
+    sfinfo_out.format = 1245186;
+    sfinfo_out.sections = 1;
+    sfinfo_out.seekable = 1;
+
+    SNDFILE *f_out = sf_open(file_name_out, SFM_WRITE, &sfinfo_out);
+    writefile(f_out, sfinfo_out, mvdr_out);
+    sf_close(f_out);
 
     return mvdr_out;
 }
