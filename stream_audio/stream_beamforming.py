@@ -5,6 +5,7 @@ import wave
 import sys
 from scipy.io import wavfile
 import subprocess
+import pyloudnorm as pyln
 
 
 class Speech:
@@ -45,7 +46,7 @@ class Speech:
         p.terminate()
 
     # Write audio to file
-    def write_to_file(self, file_name, type='raw'):
+    def write_to_file(self, file_name, type='noisy'):
 
         # wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
         # wf.setnchannels(CHANNELS)
@@ -55,10 +56,13 @@ class Speech:
         # wf.close()
 
         # Write to file
-        if type == 'raw':
-            wavfile.write(file_name, self.rate, self.audio)
+
+        if type == 'noisy':
+            norm_audio = pyln.normalize.peak(self.audio, -1.0)
+            wavfile.write(file_name, self.rate, norm_audio)
         elif type == 'enhanced':
-            wavfile.write(file_name, self.rate, self.audio_enhanced)
+            norm_audio = pyln.normalize.peak(self.audio_enhanced, -1.0)
+            wavfile.write(file_name, self.rate, norm_audio)
 
     # Calculate VAD
     def cal_VAD(self):
@@ -96,7 +100,8 @@ class Speech:
     # Call C++ module to enhance speech by beamforming
     def beamforming(self):
         # np.set_printoptions(threshold=sys.maxsize)
-        audio_str = np.array2string(self.audio, threshold=sys.maxsize)
+        audio = 1.0*self.audio/32767
+        audio_str = np.array2string(audio, threshold=sys.maxsize)
         audio_str = audio_str.replace('[', '').replace(']', '')
 
         vad_str = np.array2string(self.vad)
@@ -106,7 +111,7 @@ class Speech:
             ["/home/kienpt/Documents/Beam/beamforming_cpp/beamforming"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         #process.stdin.write(audio_str + "\n"+ vad_str)
         input_str = '\n'.join([str(self.num_samples), str(self.num_channels),
-                              str(self.rate), str(self.num_frames), audio_str, vad_str])
+                               str(self.rate), str(self.num_frames), audio_str, vad_str])
         # with open('input.txt', 'w') as f:
         #     f.write('{}'.format(input_str))
         input_bytes = bytes(input_str, 'ascii')
@@ -115,6 +120,8 @@ class Speech:
         output_arr = output.split()
 
         self.audio_enhanced = np.array(output_arr, dtype=float)
+        self.audio_enhanced = np.array(
+            self.audio_enhanced*32767, dtype='int16')
         #self.audio_enhanced = self.audio_enhanced.reshape((self.num_samples, self.num_channels))
         process.stdin.close()
 
@@ -125,7 +132,8 @@ def main():
     s.record()
     s.cal_VAD()
     s.beamforming()
-    s.write_to_file('python_out.wav', type='enhanced')
+    s.write_to_file('enhanced_out.wav', type='enhanced')
+    s.write_to_file('noisy_out.wav', type='noisy')
 
 
 if __name__ == "__main__":
