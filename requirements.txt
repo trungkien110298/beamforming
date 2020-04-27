@@ -6,3 +6,4 @@ portAudio v19
 ---- Python ----
 webrtcvad==2.0.10
 PyAudio==0.2.11
+pyloudnorm==0.1.0

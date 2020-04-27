@@ -43,13 +43,8 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
     long long noise_end = floor(param.rate * param.tNoiseEnd / param.fftsize[1]);
 
     //------------------------stftAnalyFull-----------------------------//
-    auto start = high_resolution_clock::now();
 
     auto XnParam = stftAnalyFull(s, param);
-
-    auto stop_sAF = high_resolution_clock::now();
-    auto duration = duration_cast<microseconds>(stop_sAF - start);
-    // cout << "stftAnalyFull duration: " << duration.count() / 1000000.0 << endl;
 
     //-----------------------------------------------------//
 
@@ -140,10 +135,6 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
         VX_vec.row(i) = (*VX[i]).col(max_index);
     }
 
-    auto stop_cal_vec = high_resolution_clock::now();
-    duration = duration_cast<microseconds>(stop_cal_vec - stop_sAF);
-    // cout << "Calculate VN_vec, VX_vec duration: " << duration.count() / 1000000.0 << endl;
-
     long long speech_noise_MVDR_size[3] = {2, num_frame, num_freq};
     Complex3DMatrix speech_noise_MVDR = init_Complex3DMatrix(speech_noise_MVDR_size);
 
@@ -151,10 +142,6 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 
     *speech_noise_MVDR[0] = MVDRbeamf(VX_vec, PhiNN, X);
     *speech_noise_MVDR[1] = MVDRbeamf(VN_vec, PhiXX, X);
-
-    auto stop_MVDR = high_resolution_clock::now();
-    duration = duration_cast<microseconds>(stop_MVDR - stop_cal_vec);
-    // cout << "MVRDR duration: " << duration.count() / 1000000.0 << endl;
 
     //-----------------------------------------------------//
 
@@ -165,17 +152,9 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
     Complex3DMatrix A = get<0>(scaling_output);
     Complex4DMatrix Y_MVDR = get<1>(scaling_output);
 
-    auto stop_scaling = high_resolution_clock::now();
-    duration = duration_cast<microseconds>(stop_scaling - stop_MVDR);
-    // cout << "Scaling duration: " << duration.count() / 1000000.0 << endl;
-
     //-----------------------------------------------------//
 
     auto stftSynth_out = stftSynth(Y_MVDR, param, 2, 2, num_frame, num_freq);
-
-    auto stop_sS = high_resolution_clock::now();
-    duration = duration_cast<microseconds>(stop_sS - stop_scaling);
-    // cout << "stftSynth duration: " << duration.count() / 1000000.0 << endl;
 
     //-----------------------------------------------------//
 
@@ -187,7 +166,7 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
 MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
 {
     // Config
-    auto start = high_resolution_clock::now();
+
     int safe_region = 10;
     bool subnoisecov = true;
     bool derev = true;
@@ -227,9 +206,6 @@ MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
         noise_end = max(noise_end, right_side);
     }
 
-    auto stop_VAD = high_resolution_clock::now();
-    auto duration = duration_cast<microseconds>(stop_VAD - start);
-
     noise_end = num_samples * (1.0 / sample_rate) - noise_end;
 
     //-------------------- Finish VAD ----------------------//
@@ -240,26 +216,6 @@ MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
     MatrixXd mvdr_out = get<0>(mvdr);
 
     //-------------------- Finish speech enhancement ----------------------//
-
-    auto stop_SE = high_resolution_clock::now();
-    duration = duration_cast<microseconds>(stop_SE - start);
-    double inferance_time = duration.count() / 1000000.0;
-    //double audio_time = 1.0 * num_samples / sample_rate;
-
-    char file_name_out[] = "/home/kienpt/Documents/Beam/stream_audio/ccp_out.wav";
-
-    //BUG: Test file
-    SF_INFO sfinfo_out;
-    sfinfo_out.channels = mvdr_out.cols();
-    sfinfo_out.frames = num_samples;
-    sfinfo_out.samplerate = sample_rate;
-    sfinfo_out.format = 1245186;
-    sfinfo_out.sections = 1;
-    sfinfo_out.seekable = 1;
-
-    SNDFILE *f_out = sf_open(file_name_out, SFM_WRITE, &sfinfo_out);
-    writefile(f_out, sfinfo_out, mvdr_out);
-    sf_close(f_out);
 
     return mvdr_out;
 }
