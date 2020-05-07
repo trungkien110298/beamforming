@@ -9,6 +9,7 @@
 #include <tuple>
 #include <chrono>
 #include <sndfile.hh>
+#include <eigen3-hdf5.hpp>
 
 #include "param.h"
 #include "VAD.h"
@@ -25,7 +26,168 @@ using namespace std::chrono;
 
 #define NUM_CHANNEL 2
 
-tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, double _noise_end, bool subnoisecov)
+typedef tuple<MatrixXcd, MatrixXcd, Complex3DMatrix, Complex3DMatrix> CovMatrix;
+
+CovMatrix cal_cov_matrix(Complex3DMatrix X, Complex4DMatrix Xfull, int num_channels, int noise_beg, int noise_end, bool subnoisecov, bool calculated)
+{
+    FILE *f = fopen("noise_postion.txt", "a");
+    fprintf(f, "noise_begin %d - noise_end %d \n", noise_beg, noise_end);
+    fclose(f);
+
+    long long num_frame = (*X[0]).rows();
+    long long num_freq = (*X[0]).cols();
+    long long size[3] = {num_freq, num_channels, num_channels};
+    Complex3DMatrix PhiNN = init_Complex3DMatrix(size);
+    Complex3DMatrix PhiXX = init_Complex3DMatrix(size);
+
+    Complex3DMatrix VN = init_Complex3DMatrix(size);
+    Complex3DMatrix VX = init_Complex3DMatrix(size);
+
+    MatrixXcd DN(num_freq, num_channels);
+    MatrixXcd DX(num_freq, num_channels);
+    MatrixXcd VN_vec(num_freq, num_channels);
+    MatrixXcd VX_vec(num_freq, num_channels);
+    SelfAdjointEigenSolver<MatrixXcd> ces;
+    if (!calculated)
+    {
+        for (int i = 0; i < num_freq; i++)
+        {
+            //----------- PhiNN ---------------//
+            long long count = 0;
+            for (int j = 0; j < noise_beg; j++)
+            {
+                *PhiNN[i] = *PhiNN[i] + (*Xfull[j][i]);
+                count++;
+            }
+
+            //For noise period
+            for (int j = num_frame - noise_end; j < num_frame; j++)
+            {
+                *PhiNN[i] = *PhiNN[i] + (*Xfull[j][i]);
+                count++;
+            }
+
+            //Normalize
+            *PhiNN[i] /= count;
+            ces.compute(*PhiNN[i]);
+
+            DN.row(i) = ces.eigenvalues();
+            *VN[i] = ces.eigenvectors();
+
+            //pick th comlumn which has largest eigen value
+            int max_index = 0;
+            for (int j = 1; j < num_channels; j++)
+            {
+                max_index = abs(DN(i, j)) > abs(DN(i, max_index)) ? j : max_index;
+            }
+            VN_vec.row(i) = (*VN[i]).col(max_index);
+
+            //----------- PhiNN ---------------//
+
+            count = 0;
+            //For speech period
+            for (int j = noise_beg; j < num_frame - noise_end; j++)
+            {
+                *PhiXX[i] = *PhiXX[i] + (*Xfull[j][i]);
+                count++;
+            }
+
+            //Normalize
+            *PhiXX[i] /= count;
+            if (subnoisecov)
+            {
+                *PhiXX[i] = *PhiXX[i] - *PhiNN[i];
+            }
+
+            ces.compute(*PhiXX[i]);
+            DX.row(i) = ces.eigenvalues();
+            *VX[i] = ces.eigenvectors();
+
+            //pick th comlumn which has largest eigen value
+            max_index = 0;
+            for (int j = 1; j < num_channels; j++)
+            {
+                max_index = abs(DX(i, j)) > abs(DX(i, max_index)) ? j : max_index;
+            }
+            VX_vec.row(i) = (*VX[i]).col(max_index);
+        }
+
+        H5::H5File file("cov_matrix.h5", H5F_ACC_TRUNC);
+        EigenHDF5::save(file, "VN_vec", VN_vec);
+        EigenHDF5::save(file, "VX_vec", VX_vec);
+        for (int c = 0; c < num_channels; c++)
+        {
+            char matrix_name[10];
+            sprintf(matrix_name, "PhiNN%d", c);
+            EigenHDF5::save(file, matrix_name, *PhiNN[c]);
+            sprintf(matrix_name, "PhiXX%d", c);
+            EigenHDF5::save(file, matrix_name, *PhiXX[c]);
+        }
+    }
+    else
+    {
+        H5::H5File file("cov_matrix.h5", H5F_ACC_RDONLY);
+        EigenHDF5::load(file, "VN_vec", VN_vec);
+        EigenHDF5::load(file, "VX_vec", VX_vec);
+        for (int c = 0; c < num_channels; c++)
+        {
+            char matrix_name[10];
+            sprintf(matrix_name, "PhiNN%d", c);
+            EigenHDF5::load(file, matrix_name, *PhiNN[c]);
+            sprintf(matrix_name, "PhiXX%d", c);
+            EigenHDF5::load(file, matrix_name, *PhiXX[c]);
+        }
+        file.~H5File();
+        for (int i = 0; i < num_freq; i++)
+        {
+
+            long long count = 1;
+            //For speech period
+            noise_beg = 0;
+            noise_end = 0;
+
+            for (int j = noise_beg; j < num_frame - noise_end; j++)
+            {
+                *PhiXX[i] = *PhiXX[i] + (*Xfull[j][i]);
+                count++;
+            }
+
+            //Normalize
+            *PhiXX[i] /= count;
+            if (subnoisecov)
+            {
+                *PhiXX[i] = *PhiXX[i] - *PhiNN[i];
+            }
+
+            ces.compute(*PhiXX[i]);
+            DX.row(i) = ces.eigenvalues();
+            *VX[i] = ces.eigenvectors();
+
+            //pick th comlumn which has largest eigen value
+            int max_index = 0;
+            for (int j = 1; j < num_channels; j++)
+            {
+                max_index = abs(DX(i, j)) > abs(DX(i, max_index)) ? j : max_index;
+            }
+            VX_vec.row(i) = (*VX[i]).col(max_index);
+        }
+
+        H5::H5File file_save("cov_matrix.h5", H5F_ACC_TRUNC);
+        EigenHDF5::save(file_save, "VN_vec", VN_vec);
+        EigenHDF5::save(file_save, "VX_vec", VX_vec);
+        for (int c = 0; c < num_channels; c++)
+        {
+            char matrix_name[10];
+            sprintf(matrix_name, "PhiNN%d", c);
+            EigenHDF5::save(file_save, matrix_name, *PhiNN[c]);
+            sprintf(matrix_name, "PhiXX%d", c);
+            EigenHDF5::save(file_save, matrix_name, *PhiXX[c]);
+        }
+    }
+    return make_tuple(VN_vec, VX_vec, PhiNN, PhiXX);
+}
+
+tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, double _noise_end, bool subnoisecov, int window_order)
 {
     long long num_samples = s.rows();
     int num_channels = s.cols();
@@ -58,82 +220,12 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
     long long num_frame = (*X[0]).rows();
     long long num_freq = (*X[0]).cols();
 
-    long long size[3] = {num_freq, num_channels, num_channels};
-    Complex3DMatrix PhiNN = init_Complex3DMatrix(size);
-    Complex3DMatrix PhiXX = init_Complex3DMatrix(size);
-
-    Complex3DMatrix VN = init_Complex3DMatrix(size);
-    Complex3DMatrix VX = init_Complex3DMatrix(size);
-
-    MatrixXcd DN(num_freq, num_channels);
-    MatrixXcd DX(num_freq, num_channels);
-    MatrixXcd VN_vec(num_freq, num_channels);
-    MatrixXcd VX_vec(num_freq, num_channels);
-
     //Extract noise covariance matrix
-    SelfAdjointEigenSolver<MatrixXcd> ces;
-
-    for (int i = 0; i < num_freq; i++)
-    {
-        //----------- PhiNN ---------------//
-        long long count = 0;
-        for (int j = 0; j < noise_beg; j++)
-        {
-            *PhiNN[i] = *PhiNN[i] + (*Xfull[j][i]);
-            count++;
-        }
-
-        //For noise period
-        for (int j = num_frame - noise_end; j < num_frame; j++)
-        {
-            *PhiNN[i] = *PhiNN[i] + (*Xfull[j][i]);
-            count++;
-        }
-
-        //Normalize
-        *PhiNN[i] /= count;
-        ces.compute(*PhiNN[i]);
-
-        DN.row(i) = ces.eigenvalues();
-        *VN[i] = ces.eigenvectors();
-
-        //pick th comlumn which has largest eigen value
-        int max_index = 0;
-        for (int j = 1; j < num_channels; j++)
-        {
-            max_index = abs(DN(i, j)) > abs(DN(i, max_index)) ? j : max_index;
-        }
-        VN_vec.row(i) = (*VN[i]).col(max_index);
-
-        //----------- PhiNN ---------------//
-
-        count = 0;
-        //For speech period
-        for (int j = noise_beg; j < num_frame - noise_end; j++)
-        {
-            *PhiXX[i] = *PhiXX[i] + (*Xfull[j][i]);
-            count++;
-        }
-
-        //Normalize
-        *PhiXX[i] /= count;
-        if (subnoisecov)
-        {
-            *PhiXX[i] = *PhiXX[i] - *PhiNN[i];
-        }
-
-        ces.compute(*PhiXX[i]);
-        DX.row(i) = ces.eigenvalues();
-        *VX[i] = ces.eigenvectors();
-
-        //pick th comlumn which has largest eigen value
-        max_index = 0;
-        for (int j = 1; j < num_channels; j++)
-        {
-            max_index = abs(DX(i, j)) > abs(DX(i, max_index)) ? j : max_index;
-        }
-        VX_vec.row(i) = (*VX[i]).col(max_index);
-    }
+    auto noise_cov_matrix = cal_cov_matrix(X, Xfull, num_channels, noise_beg, noise_end, subnoisecov, window_order != 1);
+    MatrixXcd VX_vec = get<0>(noise_cov_matrix);
+    MatrixXcd VN_vec = get<1>(noise_cov_matrix);
+    Complex3DMatrix PhiNN = get<2>(noise_cov_matrix);
+    Complex3DMatrix PhiXX = get<3>(noise_cov_matrix);
 
     long long speech_noise_MVDR_size[3] = {2, num_frame, num_freq};
     Complex3DMatrix speech_noise_MVDR = init_Complex3DMatrix(speech_noise_MVDR_size);
@@ -163,7 +255,7 @@ tuple<MatrixXd, MatrixXd> SE(MatrixXd &s, long long fs, double _noise_beg, doubl
     return make_tuple(mvdr_out, mvdr_derev_out);
 }
 
-MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
+MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate, int window_order)
 {
     // Config
 
@@ -186,7 +278,11 @@ MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
 
     for (int i = 0; i < num_channels; i++)
     {
-        MatrixXi vad_per_channel = vad.col(i);
+        MatrixXd sample(num_samples, 1);
+        sample.col(0) = audio.col(i);
+        MatrixXi vad_per_channel = VAD(sample, sample_rate, threshold, win_dur, hop_dur, num_noise, argin);
+        //vad.col(i);
+
         int left = 0;
 
         while (vad_per_channel(left) != 1 && left < num_frames - 1)
@@ -212,7 +308,7 @@ MatrixXd beamforming(MatrixXd &audio, MatrixXi &vad, long long sample_rate)
 
     //-------------------- Speech enhancement ----------------------//
 
-    auto mvdr = SE(audio, sample_rate, noise_begin, noise_end, subnoisecov);
+    auto mvdr = SE(audio, sample_rate, noise_begin, noise_end, subnoisecov, window_order);
     MatrixXd mvdr_out = get<0>(mvdr);
 
     //-------------------- Finish speech enhancement ----------------------//

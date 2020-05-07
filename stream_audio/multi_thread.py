@@ -48,7 +48,7 @@ class Record(Thread):
 
         sample_per_frame = int(self.batch_dur*self.rate/self.chunk)
 
-        for n in range(5):
+        for n in range(3):
             print('record {}'.format(n))
             frames = []
             for i in range(sample_per_frame):
@@ -103,7 +103,7 @@ class BeamForming(Thread):
         vad = webrtcvad.Vad()
         vad.set_mode(2)
 
-        for n in range(5):
+        for n in range(3):
             # Calculate VAD
 
             # sample_per_frame = int(self.rate*10/1000)
@@ -150,7 +150,7 @@ class BeamForming(Thread):
                 ["/home/kienpt/Documents/Beam/beamforming_cpp/beamforming"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
             input_str = '\n'.join([str(num_samples), str(self.num_channels),
-                                   str(self.rate), str(num_frames), audio_str, vad_str])
+                                   str(self.rate), str(num_frames), str(n+1), audio_str, vad_str])
 
             input_bytes = bytes(input_str, 'ascii')
             output_bytes = process.communicate(input=input_bytes)[0]
@@ -194,7 +194,7 @@ def main():
     while not vad_queue.empty():
         batch_vad = vad_queue.get()
         vad = np.append(vad, batch_vad, axis=0)
-    np.savetxt('VAD.txt',  np.transpose(vad), fmt='%d')
+    #np.savetxt('VAD.txt',  np.transpose(vad), fmt='%d')
 
     # Write raw audio
     timestamp = str(int(time.time()))
